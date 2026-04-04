@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { createClient } from "@/lib/supabase/client"
 import type { TicketWithDetails } from "@/lib/types"
+import { useRealtimeTickets } from "@/hooks/use-realtime-tickets"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TicketCard } from "@/components/ticket-card"
@@ -13,61 +14,15 @@ import { toast } from "sonner"
 
 export function FloorwalkerView() {
   const { user } = useAuth()
-  const [tickets, setTickets] = useState<TicketWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
-  const fetchTickets = async () => {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("tickets")
-      .select(`
-        *,
-        creator:users!tickets_created_by_fkey(*),
-        assignee:users!tickets_assigned_to_fkey(*),
-        rating:ratings(*)
-      `)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      toast.error("Failed to fetch tickets")
-      return
-    }
-
-    const formattedData = data.map((ticket) => ({
-      ...ticket,
-      rating: ticket.rating?.[0] || undefined,
-    }))
-
-    setTickets(formattedData)
-    setIsLoading(false)
-  }
-
-  useEffect(() => {
-    fetchTickets()
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel("floorwalker-tickets")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tickets",
-        },
-        () => {
-          fetchTickets()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  const { tickets, isLoading } = useRealtimeTickets({
+    channelName: "floorwalker-tickets-queue",
+  })
 
   const handleTakeTicket = async (ticketId: string) => {
     if (!user) return
+    setActionLoading(ticketId)
 
     const supabase = createClient()
     const { error } = await supabase
@@ -79,16 +34,19 @@ export function FloorwalkerView() {
       })
       .eq("id", ticketId)
 
+    setActionLoading(null)
+
     if (error) {
       toast.error("Failed to take ticket")
       return
     }
 
     toast.success("Ticket assigned to you")
-    fetchTickets()
   }
 
   const handleResolveTicket = async (ticketId: string) => {
+    setActionLoading(ticketId)
+
     const supabase = createClient()
     const { error } = await supabase
       .from("tickets")
@@ -98,13 +56,14 @@ export function FloorwalkerView() {
       })
       .eq("id", ticketId)
 
+    setActionLoading(null)
+
     if (error) {
       toast.error("Failed to resolve ticket")
       return
     }
 
     toast.success("Ticket resolved")
-    fetchTickets()
   }
 
   const pendingTickets = tickets.filter((t) => t.status === "pending")
@@ -191,6 +150,7 @@ export function FloorwalkerView() {
           <TicketList
             tickets={pendingTickets}
             isLoading={isLoading}
+            actionLoading={actionLoading}
             showAssignButton
             onAssign={handleTakeTicket}
           />
@@ -199,6 +159,7 @@ export function FloorwalkerView() {
           <TicketList
             tickets={myTakenTickets}
             isLoading={isLoading}
+            actionLoading={actionLoading}
             showResolveButton
             onResolve={handleResolveTicket}
           />
@@ -207,10 +168,15 @@ export function FloorwalkerView() {
           <TicketList
             tickets={allTakenTickets}
             isLoading={isLoading}
+            actionLoading={actionLoading}
           />
         </TabsContent>
         <TabsContent value="resolved" className="mt-4">
-          <TicketList tickets={resolvedTickets} isLoading={isLoading} />
+          <TicketList 
+            tickets={resolvedTickets} 
+            isLoading={isLoading}
+            actionLoading={actionLoading}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -220,6 +186,7 @@ export function FloorwalkerView() {
 function TicketList({
   tickets,
   isLoading,
+  actionLoading,
   showAssignButton = false,
   onAssign,
   showResolveButton = false,
@@ -227,6 +194,7 @@ function TicketList({
 }: {
   tickets: TicketWithDetails[]
   isLoading: boolean
+  actionLoading?: string | null
   showAssignButton?: boolean
   onAssign?: (ticketId: string) => void
   showResolveButton?: boolean
@@ -267,6 +235,7 @@ function TicketList({
           onAssign={onAssign ? () => onAssign(ticket.id) : undefined}
           showResolveButton={showResolveButton}
           onResolve={onResolve ? () => onResolve(ticket.id) : undefined}
+          isActionLoading={actionLoading === ticket.id}
         />
       ))}
     </div>

@@ -1,80 +1,27 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useAuth } from "@/lib/auth-context"
-import { createClient } from "@/lib/supabase/client"
 import type { TicketWithDetails } from "@/lib/types"
+import { useRealtimeTickets } from "@/hooks/use-realtime-tickets"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CreateTicketDialog } from "@/components/create-ticket-dialog"
 import { RatingDialog } from "@/components/rating-dialog"
 import { TicketCard } from "@/components/ticket-card"
 import { Empty } from "@/components/ui/empty"
 import { Plus, Ticket, Clock, CheckCircle } from "lucide-react"
-import { toast } from "sonner"
 
 export function AgentView() {
   const { user } = useAuth()
-  const [tickets, setTickets] = useState<TicketWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [ratingTicket, setRatingTicket] = useState<TicketWithDetails | null>(null)
 
-  const fetchTickets = async () => {
-    if (!user) return
-    
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("tickets")
-      .select(`
-        *,
-        creator:users!tickets_created_by_fkey(*),
-        assignee:users!tickets_assigned_to_fkey(*),
-        rating:ratings(*)
-      `)
-      .eq("created_by", user.id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      toast.error("Failed to fetch tickets")
-      return
-    }
-
-    const formattedData = data.map((ticket) => ({
-      ...ticket,
-      rating: ticket.rating?.[0] || undefined,
-    }))
-
-    setTickets(formattedData)
-    setIsLoading(false)
-  }
-
-  useEffect(() => {
-    fetchTickets()
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel("agent-tickets")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tickets",
-          filter: `created_by=eq.${user?.id}`,
-        },
-        () => {
-          fetchTickets()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user?.id])
+  const { tickets, isLoading, refetch } = useRealtimeTickets({
+    createdBy: user?.id,
+    channelName: `agent-tickets-${user?.id}`,
+  })
 
   const pendingTickets = tickets.filter((t) => t.status === "pending")
   const takenTickets = tickets.filter((t) => t.status === "taken")
@@ -182,7 +129,7 @@ export function AgentView() {
       <CreateTicketDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        onSuccess={fetchTickets}
+        onSuccess={refetch}
       />
 
       {ratingTicket && (
@@ -190,7 +137,7 @@ export function AgentView() {
           ticket={ratingTicket}
           open={!!ratingTicket}
           onOpenChange={(open) => !open && setRatingTicket(null)}
-          onSuccess={fetchTickets}
+          onSuccess={refetch}
         />
       )}
     </div>
