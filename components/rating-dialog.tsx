@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { TicketWithDetails } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
+import type { TicketWithDetails, Rating } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -21,10 +22,11 @@ interface RatingDialogProps {
   ticket: TicketWithDetails
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess: () => void
+  onSuccess: (rating: Rating) => void
 }
 
 export function RatingDialog({ ticket, open, onOpenChange, onSuccess }: RatingDialogProps) {
+  const { user } = useAuth()
   const [rating, setRating] = useState(0)
   const [hoveredRating, setHoveredRating] = useState(0)
   const [comment, setComment] = useState("")
@@ -40,14 +42,20 @@ export function RatingDialog({ ticket, open, onOpenChange, onSuccess }: RatingDi
     setIsLoading(true)
     const supabase = createClient()
 
-    const { error } = await supabase.from("ratings").insert({
+    const { data: newRatings, error } = await supabase.from("ratings").insert({
       ticket_id: ticket.id,
+      rated_by: user?.id,
+      rated_user_id: ticket.assigned_to,
       rating,
       comment: comment.trim() || null,
-    })
+    }).select()
 
     if (error) {
-      toast.error("Failed to submit rating")
+      if (error.code === "23505") { // unique_violation
+        toast.error("You already rated this support")
+      } else {
+        toast.error("Failed to submit rating")
+      }
       setIsLoading(false)
       return
     }
@@ -57,7 +65,10 @@ export function RatingDialog({ ticket, open, onOpenChange, onSuccess }: RatingDi
     setComment("")
     setIsLoading(false)
     onOpenChange(false)
-    onSuccess()
+    
+    if (newRatings && newRatings.length > 0) {
+      onSuccess(newRatings[0])
+    }
   }
 
   return (

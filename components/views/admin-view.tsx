@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { User, TicketWithDetails, Role } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useRealtimeTickets } from "@/hooks/use-realtime-tickets"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -28,6 +29,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
+import { calculateTimeDiffSeconds, formatDuration } from "@/lib/utils"
 
 const roleLabels: Record<Role, string> = {
   agent: "Agent",
@@ -45,64 +47,45 @@ const roleColors: Record<Role, string> = {
 
 export function AdminView() {
   const [users, setUsers] = useState<User[]>([])
-  const [tickets, setTickets] = useState<TicketWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isUsersLoading, setIsUsersLoading] = useState(true)
   const [addUserDialogOpen, setAddUserDialogOpen] = useState(false)
 
-  const fetchData = async () => {
+  const { tickets, isLoading: isTicketsLoading, refetch } = useRealtimeTickets({
+    channelName: "admin-tickets-queue",
+  })
+
+  const fetchUsers = async () => {
     const supabase = createClient()
     
-    const [usersResult, ticketsResult] = await Promise.all([
-      supabase.from("users").select("*").order("created_at", { ascending: false }),
-      supabase
-        .from("tickets")
-        .select(`
-          *,
-          creator:users!tickets_created_by_fkey(*),
-          assignee:users!tickets_assigned_to_fkey(*),
-          rating:ratings(*)
-        `)
-        .order("created_at", { ascending: false }),
-    ])
+    const { data: usersData, error } = await supabase
+      .from("users")
+      .select("*")
+      .order("created_at", { ascending: false })
 
-    if (usersResult.error) {
+    if (error) {
       toast.error("Failed to fetch users")
     } else {
-      setUsers(usersResult.data || [])
+      setUsers(usersData || [])
     }
-
-    if (ticketsResult.error) {
-      toast.error("Failed to fetch tickets")
-    } else {
-      const formattedTickets = (ticketsResult.data || []).map((ticket) => ({
-        ...ticket,
-        rating: ticket.rating?.[0] || undefined,
-      }))
-      setTickets(formattedTickets)
-    }
-
-    setIsLoading(false)
+    setIsUsersLoading(false)
   }
 
   useEffect(() => {
-    fetchData()
+    fetchUsers()
 
     const supabase = createClient()
-    const ticketChannel = supabase
-      .channel("admin-tickets")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, () => fetchData())
-      .subscribe()
 
     const userChannel = supabase
       .channel("admin-users")
-      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "users" }, () => fetchUsers())
       .subscribe()
 
     return () => {
-      supabase.removeChannel(ticketChannel)
       supabase.removeChannel(userChannel)
     }
   }, [])
+
+  const isLoading = isUsersLoading || isTicketsLoading
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return
@@ -116,7 +99,7 @@ export function AdminView() {
     }
 
     toast.success("User deleted")
-    fetchData()
+    fetchUsers()
   }
 
   // Analytics calculations
@@ -130,16 +113,15 @@ export function AdminView() {
     ? (ratingsWithScore.reduce((sum, t) => sum + (t.rating?.rating || 0), 0) / ratingsWithScore.length).toFixed(1)
     : "N/A"
 
-  const resolvedWithTime = resolvedTickets.filter((t) => t.taken_at && t.resolved_at)
-  const avgResolutionTime = resolvedWithTime.length > 0
-    ? Math.round(
-        resolvedWithTime.reduce((sum, t) => {
-          const taken = new Date(t.taken_at!).getTime()
-          const resolved = new Date(t.resolved_at!).getTime()
-          return sum + (resolved - taken) / 1000 / 60
-        }, 0) / resolvedWithTime.length
-      )
-    : 0
+  const takenWithTime = tickets.filter(t => t.taken_at)
+  const avgResponseTimeSeconds = takenWithTime.length > 0 
+    ? takenWithTime.reduce((sum, t) => sum + (calculateTimeDiffSeconds(t.created_at, t.taken_at) || 0), 0) / takenWithTime.length
+    : null
+
+  const resolvedWithTime = resolvedTickets.filter((t) => t.resolved_at)
+  const avgResolutionTimeSeconds = resolvedWithTime.length > 0
+    ? resolvedWithTime.reduce((sum, t) => sum + (calculateTimeDiffSeconds(t.created_at, t.resolved_at) || 0), 0) / resolvedWithTime.length
+    : null
 
   // Support staff performance
   const supportStaff = users.filter((u) => u.role === "floorwalker" || u.role === "teamleader")
@@ -166,7 +148,7 @@ export function AdminView() {
         <p className="text-muted-foreground">Manage users and view system analytics</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Users</CardDescription>
@@ -205,13 +187,25 @@ export function AdminView() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
+            <CardDescription>Avg Response Time</CardDescription>
+            <CardTitle className="text-3xl">{formatDuration(avgResponseTimeSeconds)}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4" />
+              Created to Taken
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
             <CardDescription>Avg Resolution Time</CardDescription>
-            <CardTitle className="text-3xl">{avgResolutionTime}m</CardTitle>
+            <CardTitle className="text-3xl">{formatDuration(avgResolutionTimeSeconds)}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <TrendingUp className="h-4 w-4" />
-              Minutes per ticket
+              Created to Resolved
             </div>
           </CardContent>
         </Card>
@@ -393,7 +387,7 @@ export function AdminView() {
       <AddUserDialog
         open={addUserDialogOpen}
         onOpenChange={setAddUserDialogOpen}
-        onSuccess={fetchData}
+        onSuccess={fetchUsers}
       />
     </div>
   )

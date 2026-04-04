@@ -18,7 +18,7 @@ export function AgentView() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [ratingTicket, setRatingTicket] = useState<TicketWithDetails | null>(null)
 
-  const { tickets, isLoading, refetch } = useRealtimeTickets({
+  const { tickets, isLoading, refetch, updateTicketRating } = useRealtimeTickets({
     createdBy: user?.id,
     channelName: `agent-tickets-${user?.id}`,
   })
@@ -26,7 +26,7 @@ export function AgentView() {
   const pendingTickets = tickets.filter((t) => t.status === "pending")
   const takenTickets = tickets.filter((t) => t.status === "taken")
   const resolvedTickets = tickets.filter((t) => t.status === "resolved")
-  const unreatedResolvedTickets = resolvedTickets.filter((t) => !t.rating)
+  const unreatedResolvedTickets = resolvedTickets.filter((t) => !t.hasRated)
 
   return (
     <div className="space-y-6">
@@ -137,7 +137,10 @@ export function AgentView() {
           ticket={ratingTicket}
           open={!!ratingTicket}
           onOpenChange={(open) => !open && setRatingTicket(null)}
-          onSuccess={refetch}
+          onSuccess={(rating) => {
+            updateTicketRating(ratingTicket.id, rating)
+            setRatingTicket(null)
+          }}
         />
       )}
     </div>
@@ -183,7 +186,8 @@ function TicketList({
         <TicketCard
           key={ticket.id}
           ticket={ticket}
-          showRateButton={ticket.status === "resolved" && !ticket.rating}
+          showRateButton={ticket.status === "resolved" && !ticket.hasRated}
+          showAlreadyRated={ticket.status === "resolved" && ticket.hasRated}
           onRate={onRate ? () => onRate(ticket) : undefined}
         />
       ))}

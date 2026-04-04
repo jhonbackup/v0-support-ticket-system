@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/auth-context"
 import type { TicketWithDetails, Ticket } from "@/lib/types"
 import { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 
@@ -18,17 +19,18 @@ interface UseRealtimeTicketsReturn {
   tickets: TicketWithDetails[]
   isLoading: boolean
   refetch: () => Promise<void>
+  updateTicketRating: (ticketId: string, rating: NonNullable<TicketWithDetails["rating"]>) => void
 }
 
 export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealtimeTicketsReturn {
-  const { createdBy, channelName } = options
+  const { createdBy, assignedTo, channelName } = options
+  const { user } = useAuth()
   const [tickets, setTickets] = useState<TicketWithDetails[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const supabaseRef = useRef(createClient())
-  const channelRef = useRef<ReturnType<typeof supabaseRef.current.channel> | null>(null)
+  const [supabase] = useState(() => createClient())
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   const fetchTickets = useCallback(async () => {
-    const supabase = supabaseRef.current
     let query = supabase
       .from("tickets")
       .select(`
@@ -42,6 +44,10 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
     if (createdBy) {
       query = query.eq("created_by", createdBy)
     }
+    
+    if (assignedTo) {
+      query = query.eq("assigned_to", assignedTo)
+    }
 
     const { data, error } = await query
 
@@ -50,18 +56,29 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
       return
     }
 
-    const formattedData = (data || []).map((ticket) => ({
-      ...ticket,
-      rating: ticket.rating?.[0] || undefined,
-    }))
+    const formattedData = (data || []).map((ticket) => {
+      let ratingsArray: any[] = []
+      if (Array.isArray(ticket.rating)) {
+        ratingsArray = ticket.rating
+      } else if (ticket.rating) {
+        ratingsArray = [ticket.rating]
+      }
+      
+      const hasRated = ratingsArray.some((r) => r.rated_by === user?.id)
+      const userRating = ratingsArray.find((r) => r.rated_by === user?.id) || ratingsArray[0]
+      return {
+        ...ticket,
+        hasRated,
+        rating: userRating || undefined,
+      }
+    })
 
     setTickets(formattedData)
     setIsLoading(false)
-  }, [createdBy])
+  }, [createdBy, assignedTo, supabase, user?.id])
 
   // Fetch single ticket with details for updates
   const fetchSingleTicket = useCallback(async (ticketId: string): Promise<TicketWithDetails | null> => {
-    const supabase = supabaseRef.current
     const { data, error } = await supabase
       .from("tickets")
       .select(`
@@ -78,11 +95,22 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
       return null
     }
 
+    let ratingsArray: any[] = []
+    if (Array.isArray(data.rating)) {
+      ratingsArray = data.rating
+    } else if (data.rating) {
+      ratingsArray = [data.rating]
+    }
+    
+    const hasRated = ratingsArray.some((r) => r.rated_by === user?.id)
+    const userRating = ratingsArray.find((r) => r.rated_by === user?.id) || ratingsArray[0]
+
     return {
       ...data,
-      rating: data.rating?.[0] || undefined,
+      hasRated,
+      rating: userRating || undefined,
     }
-  }, [])
+  }, [supabase, user?.id])
 
   // Handle realtime events
   const handleRealtimeEvent = useCallback(
@@ -96,6 +124,10 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
         if (createdBy && newTicket.created_by !== createdBy) {
           return
         }
+        
+        if (assignedTo && newTicket.assigned_to !== assignedTo) {
+          return
+        }
 
         // Fetch full ticket details
         const ticketWithDetails = await fetchSingleTicket(newTicket.id)
@@ -105,11 +137,27 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
       } else if (eventType === "UPDATE") {
         const updatedTicket = payload.new as Ticket
         
-        // If filtering by creator and ticket doesn't belong to us, remove it if present
+        // If filtering by creator/assignee and ticket doesn't belong to us, remove it if present
         if (createdBy && updatedTicket.created_by !== createdBy) {
           setTickets((prev) => prev.filter((t) => t.id !== updatedTicket.id))
           return
         }
+        
+        if (assignedTo && updatedTicket.assigned_to !== assignedTo) {
+          setTickets((prev) => prev.filter((t) => t.id !== updatedTicket.id))
+          return
+        }
+
+        // Optimistically update the local state immediately
+        setTickets((prev) => {
+          const existingIndex = prev.findIndex((t) => t.id === updatedTicket.id)
+          if (existingIndex >= 0) {
+            const newTickets = [...prev]
+            newTickets[existingIndex] = { ...newTickets[existingIndex], ...updatedTicket }
+            return newTickets
+          }
+          return prev
+        })
 
         // Fetch full ticket details and update
         const ticketWithDetails = await fetchSingleTicket(updatedTicket.id)
@@ -132,16 +180,19 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
         setTickets((prev) => prev.filter((t) => t.id !== deletedTicket.id))
       }
     },
-    [createdBy, fetchSingleTicket]
+    [createdBy, assignedTo, fetchSingleTicket]
   )
+
+  const updateTicketRating = useCallback((ticketId: string, rating: NonNullable<TicketWithDetails["rating"]>) => {
+    setTickets((prev) => 
+      prev.map((t) => (t.id === ticketId ? { ...t, rating, hasRated: true } : t))
+    )
+  }, [])
 
   useEffect(() => {
     // Initial fetch
     fetchTickets()
 
-    // Setup realtime subscription
-    const supabase = supabaseRef.current
-    
     // Clean up previous channel if exists
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
@@ -167,27 +218,22 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
         },
         (payload) => handleRealtimeEvent(payload as RealtimePostgresChangesPayload<Ticket>)
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "tickets",
-        },
-        (payload) => handleRealtimeEvent(payload as RealtimePostgresChangesPayload<Ticket>)
-      )
       .subscribe()
 
     channelRef.current = channel
 
     return () => {
-      supabase.removeChannel(channel)
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
     }
-  }, [channelName, fetchTickets, handleRealtimeEvent])
+  }, [channelName, fetchTickets, handleRealtimeEvent, supabase])
 
   return {
     tickets,
     isLoading,
     refetch: fetchTickets,
+    updateTicketRating,
   }
 }

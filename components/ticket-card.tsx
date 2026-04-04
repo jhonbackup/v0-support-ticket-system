@@ -4,8 +4,9 @@ import type { TicketWithDetails } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Star, Clock, User, Calendar } from "lucide-react"
+import { Star, Clock, User, Calendar, Timer } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { calculateTimeDiffSeconds, formatDuration } from "@/lib/utils"
 
 const statusConfig = {
   pending: { label: "Pending", className: "bg-yellow-500/10 text-yellow-700 border-yellow-200" },
@@ -28,6 +29,7 @@ interface TicketCardProps {
   showResolveButton?: boolean
   onResolve?: () => void
   showCreator?: boolean
+  showAlreadyRated?: boolean
 }
 
 export function TicketCard({
@@ -39,9 +41,13 @@ export function TicketCard({
   showResolveButton,
   onResolve,
   showCreator = false,
+  showAlreadyRated = false,
 }: TicketCardProps) {
   const status = statusConfig[ticket.status]
   const priority = priorityConfig[ticket.priority]
+  
+  const responseTime = calculateTimeDiffSeconds(ticket.created_at, ticket.taken_at)
+  const resolutionTime = calculateTimeDiffSeconds(ticket.created_at, ticket.resolved_at)
 
   return (
     <Card>
@@ -98,6 +104,18 @@ export function TicketCard({
               Taken {formatDistanceToNow(new Date(ticket.taken_at), { addSuffix: true })}
             </div>
           )}
+          {responseTime !== null && (
+            <div className="flex items-center gap-1 text-blue-600">
+              <Timer className="h-4 w-4" />
+              Response: {formatDuration(responseTime)}
+            </div>
+          )}
+          {resolutionTime !== null && (
+            <div className="flex items-center gap-1 text-green-600">
+              <Timer className="h-4 w-4" />
+              Resolution: {formatDuration(resolutionTime)}
+            </div>
+          )}
         </div>
         
         {ticket.rating?.comment && (
@@ -112,6 +130,11 @@ export function TicketCard({
               <Star className="h-4 w-4 mr-2" />
               Rate
             </Button>
+          )}
+          {showAlreadyRated && (
+            <div className="flex items-center gap-1 text-sm text-green-600 font-medium">
+              You already rated this support
+            </div>
           )}
           {showAssignButton && (
             <Button size="sm" onClick={onAssign}>

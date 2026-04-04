@@ -23,12 +23,14 @@ export interface Ticket {
   taken_at: string | null
   resolved_at: string | null
   creator?: User
-  assignee?: User
+  assignee?: User | null
 }
 
 export interface Rating {
   id: string
   ticket_id: string
+  rated_by: string
+  rated_user_id: string
   rating: number
   comment: string | null
   created_at: string
@@ -38,4 +40,5 @@ export interface TicketWithDetails extends Ticket {
   creator: User
   assignee: User | null
   rating?: Rating
+  hasRated?: boolean
 }
