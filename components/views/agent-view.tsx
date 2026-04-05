@@ -129,7 +129,7 @@ export function AgentView() {
       <CreateTicketDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        onSuccess={refetch}
+        onSuccess={() => {}}
       />
 
       {ratingTicket && (

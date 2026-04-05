@@ -129,10 +129,18 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
           return
         }
 
+        console.log("INSERT EVENT", newTicket.id)
+        
         // Fetch full ticket details
         const ticketWithDetails = await fetchSingleTicket(newTicket.id)
         if (ticketWithDetails) {
-          setTickets((prev) => [ticketWithDetails, ...prev])
+          setTickets((prev) => {
+            const exists = prev.some((t) => t.id === ticketWithDetails.id)
+            if (exists) return prev
+            
+            const next = [ticketWithDetails, ...prev]
+            return Array.from(new Map(next.map(t => [t.id, t])).values())
+          })
         }
       } else if (eventType === "UPDATE") {
         const updatedTicket = payload.new as Ticket
@@ -148,32 +156,15 @@ export function useRealtimeTickets(options: UseRealtimeTicketsOptions): UseRealt
           return
         }
 
-        // Optimistically update the local state immediately
-        setTickets((prev) => {
-          const existingIndex = prev.findIndex((t) => t.id === updatedTicket.id)
-          if (existingIndex >= 0) {
-            const newTickets = [...prev]
-            newTickets[existingIndex] = { ...newTickets[existingIndex], ...updatedTicket }
-            return newTickets
-          }
-          return prev
-        })
-
         // Fetch full ticket details and update
         const ticketWithDetails = await fetchSingleTicket(updatedTicket.id)
         if (ticketWithDetails) {
-          setTickets((prev) => {
-            const existingIndex = prev.findIndex((t) => t.id === updatedTicket.id)
-            if (existingIndex >= 0) {
-              // Update existing ticket
-              const newTickets = [...prev]
-              newTickets[existingIndex] = ticketWithDetails
-              return newTickets
-            } else {
-              // Add new ticket (might be newly matching our filter)
-              return [ticketWithDetails, ...prev]
-            }
-          })
+          setTickets((prev) =>
+            Array.from(new Map(
+              prev.map((t) => (t.id === updatedTicket.id ? ticketWithDetails : t))
+                .map(t => [t.id, t])
+            ).values())
+          )
         }
       } else if (eventType === "DELETE") {
         const deletedTicket = payload.old as Ticket
