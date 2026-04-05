@@ -10,11 +10,15 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- Create tickets table
 CREATE TABLE IF NOT EXISTS public.tickets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_number SERIAL,
   created_by UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'taken', 'resolved')),
-  priority TEXT NOT NULL CHECK (priority IN ('low', 'medium', 'high')),
-  issue TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('technical', 'doubts', 'supervisor')),
+  external_ticket_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  description TEXT,
+  issue TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   taken_at TIMESTAMPTZ,
   resolved_at TIMESTAMPTZ

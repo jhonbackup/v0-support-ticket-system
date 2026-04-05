@@ -14,10 +14,10 @@ const statusConfig = {
   resolved: { label: "Resolved", className: "bg-green-500/10 text-green-700 border-green-200" },
 }
 
-const priorityConfig = {
-  low: { label: "Low", className: "bg-slate-500/10 text-slate-700 border-slate-200" },
-  medium: { label: "Medium", className: "bg-amber-500/10 text-amber-700 border-amber-200" },
-  high: { label: "High", className: "bg-red-500/10 text-red-700 border-red-200" },
+const typeConfig = {
+  technical: { label: "Technical", className: "bg-purple-500/10 text-purple-700 border-purple-200" },
+  doubts: { label: "Doubts", className: "bg-cyan-500/10 text-cyan-700 border-cyan-200" },
+  supervisor: { label: "Supervisor", className: "bg-orange-500/10 text-orange-700 border-orange-200" },
 }
 
 interface TicketCardProps {
@@ -30,6 +30,7 @@ interface TicketCardProps {
   onResolve?: () => void
   showCreator?: boolean
   showAlreadyRated?: boolean
+  isActionLoading?: boolean
 }
 
 export function TicketCard({
@@ -42,27 +43,42 @@ export function TicketCard({
   onResolve,
   showCreator = false,
   showAlreadyRated = false,
+  isActionLoading = false,
 }: TicketCardProps) {
   const status = statusConfig[ticket.status]
-  const priority = priorityConfig[ticket.priority]
+  const ticketType = typeConfig[ticket.type] || { label: "Unknown", className: "bg-slate-500/10 text-slate-700 border-slate-200" }
   
   const responseTime = calculateTimeDiffSeconds(ticket.created_at, ticket.taken_at)
   const resolutionTime = calculateTimeDiffSeconds(ticket.created_at, ticket.resolved_at)
+
+  const mainLabel = ticket.reason || "Support Ticket"
+  const secondaryText = ticket.description || ticket.issue
+  const formattedInternalId = `#TCK-${ticket.ticket_number?.toString().padStart(6, '0') || '000000'}`
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
-          <div className="space-y-1 flex-1">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground pb-1">
+              <span>{formattedInternalId}</span>
+              <span>•</span>
+              <span className="text-blue-600 dark:text-blue-400">Zendesk: {ticket.external_ticket_id || 'N/A'}</span>
+            </div>
             <CardTitle className="text-base font-medium leading-relaxed">
-              {ticket.issue}
+              {mainLabel}
             </CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
+            {secondaryText && (
+              <p className="text-sm text-muted-foreground mr-4">
+                {secondaryText}
+              </p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap pt-1">
               <Badge variant="outline" className={status.className}>
                 {status.label}
               </Badge>
-              <Badge variant="outline" className={priority.className}>
-                {priority.label}
+              <Badge variant="outline" className={ticketType.className}>
+                {ticketType.label}
               </Badge>
             </div>
           </div>
@@ -137,12 +153,12 @@ export function TicketCard({
             </div>
           )}
           {showAssignButton && (
-            <Button size="sm" onClick={onAssign}>
+            <Button size="sm" onClick={onAssign} disabled={isActionLoading}>
               Take Ticket
             </Button>
           )}
           {showResolveButton && (
-            <Button size="sm" variant="secondary" onClick={onResolve}>
+            <Button size="sm" variant="secondary" onClick={onResolve} disabled={isActionLoading}>
               Mark Resolved
             </Button>
           )}

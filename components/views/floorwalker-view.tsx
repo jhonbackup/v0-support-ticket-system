@@ -9,12 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TicketCard } from "@/components/ticket-card"
 import { Empty } from "@/components/ui/empty"
-import { Clock, Ticket, CheckCircle, AlertTriangle } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Clock, Ticket, CheckCircle, AlertTriangle, Search } from "lucide-react"
 import { toast } from "sonner"
 
 export function FloorwalkerView() {
   const { user } = useAuth()
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
 
   const { tickets, isLoading } = useRealtimeTickets({
     channelName: "floorwalker-tickets-queue",
@@ -66,17 +68,42 @@ export function FloorwalkerView() {
     toast.success("Ticket resolved")
   }
 
-  const pendingTickets = tickets.filter((t) => t.status === "pending")
-  const myTakenTickets = tickets.filter((t) => t.status === "taken" && t.assigned_to === user?.id)
-  const allTakenTickets = tickets.filter((t) => t.status === "taken")
-  const resolvedTickets = tickets.filter((t) => t.status === "resolved")
-  const highPriorityPending = pendingTickets.filter((t) => t.priority === "high")
+  const filteredTickets = tickets.filter(t => {
+    if (!searchQuery.trim()) return true
+    
+    const query = searchQuery.trim().toLowerCase()
+    
+    const formattedId = `TCK-${t.ticket_number?.toString().padStart(6, '0')}`.toLowerCase()
+    const internalMatch = formattedId.includes(query) || t.ticket_number?.toString().includes(query)
+    
+    const externalMatch = t.external_ticket_id?.toLowerCase().includes(query)
+    
+    return internalMatch || externalMatch
+  })
+
+  const pendingTickets = filteredTickets.filter((t) => t.status === "pending")
+  const myTakenTickets = filteredTickets.filter((t) => t.status === "taken" && t.assigned_to === user?.id)
+  const allTakenTickets = filteredTickets.filter((t) => t.status === "taken")
+  const resolvedTickets = filteredTickets.filter((t) => t.status === "resolved")
+  const supervisorRequests = pendingTickets.filter((t) => t.type === "supervisor")
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Support Queue</h2>
-        <p className="text-muted-foreground">Manage and respond to agent support tickets</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Support Queue</h2>
+          <p className="text-muted-foreground">Manage and respond to agent support tickets</p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search by ID or Zendesk..."
+            className="pl-9 w-full"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -120,19 +147,19 @@ export function FloorwalkerView() {
             </div>
           </CardContent>
         </Card>
-        <Card className={highPriorityPending.length > 0 ? "border-red-200 bg-red-50" : ""}>
+        <Card className={supervisorRequests.length > 0 ? "border-orange-200 bg-orange-50" : ""}>
           <CardHeader className="pb-2">
-            <CardDescription className={highPriorityPending.length > 0 ? "text-red-700" : ""}>
-              High Priority
+            <CardDescription className={supervisorRequests.length > 0 ? "text-orange-700" : ""}>
+              Supervisor
             </CardDescription>
-            <CardTitle className={`text-3xl ${highPriorityPending.length > 0 ? "text-red-700" : ""}`}>
-              {highPriorityPending.length}
+            <CardTitle className={`text-3xl ${supervisorRequests.length > 0 ? "text-orange-700" : ""}`}>
+              {supervisorRequests.length}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`flex items-center gap-2 text-sm ${highPriorityPending.length > 0 ? "text-red-600" : "text-muted-foreground"}`}>
+            <div className={`flex items-center gap-2 text-sm ${supervisorRequests.length > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
               <AlertTriangle className="h-4 w-4" />
-              Urgent attention
+              Requires approval
             </div>
           </CardContent>
         </Card>

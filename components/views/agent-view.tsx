@@ -11,21 +11,36 @@ import { CreateTicketDialog } from "@/components/create-ticket-dialog"
 import { RatingDialog } from "@/components/rating-dialog"
 import { TicketCard } from "@/components/ticket-card"
 import { Empty } from "@/components/ui/empty"
-import { Plus, Ticket, Clock, CheckCircle } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Plus, Ticket, Clock, CheckCircle, Search } from "lucide-react"
 
 export function AgentView() {
   const { user } = useAuth()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [ratingTicket, setRatingTicket] = useState<TicketWithDetails | null>(null)
-
   const { tickets, isLoading, refetch, updateTicketRating } = useRealtimeTickets({
     createdBy: user?.id,
     channelName: `agent-tickets-${user?.id}`,
   })
 
-  const pendingTickets = tickets.filter((t) => t.status === "pending")
-  const takenTickets = tickets.filter((t) => t.status === "taken")
-  const resolvedTickets = tickets.filter((t) => t.status === "resolved")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredTickets = tickets.filter(t => {
+    if (!searchQuery.trim()) return true
+    
+    const query = searchQuery.trim().toLowerCase()
+    
+    const formattedId = `TCK-${t.ticket_number?.toString().padStart(6, '0')}`.toLowerCase()
+    const internalMatch = formattedId.includes(query) || t.ticket_number?.toString().includes(query)
+    
+    const externalMatch = t.external_ticket_id?.toLowerCase().includes(query)
+    
+    return internalMatch || externalMatch
+  })
+
+  const pendingTickets = filteredTickets.filter((t) => t.status === "pending")
+  const takenTickets = filteredTickets.filter((t) => t.status === "taken")
+  const resolvedTickets = filteredTickets.filter((t) => t.status === "resolved")
   const unreatedResolvedTickets = resolvedTickets.filter((t) => !t.hasRated)
 
   return (
@@ -35,10 +50,33 @@ export function AgentView() {
           <h2 className="text-2xl font-bold">My Tickets</h2>
           <p className="text-muted-foreground">Create and track your support requests</p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Ticket
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-64 hidden sm:block">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search by ID or Zendesk..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Ticket
+          </Button>
+        </div>
+      </div>
+      
+      <div className="relative w-full sm:hidden">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Search by ID or Zendesk..."
+          className="pl-9 w-full"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -97,7 +135,7 @@ export function AgentView() {
                 className="border-amber-300 hover:bg-amber-100"
                 onClick={() => setRatingTicket(ticket)}
               >
-                Rate: {ticket.issue.slice(0, 30)}...
+                Rate: {(ticket.reason || ticket.issue || "").slice(0, 30)}...
               </Button>
             ))}
           </CardContent>
@@ -106,14 +144,14 @@ export function AgentView() {
 
       <Tabs defaultValue="all">
         <TabsList>
-          <TabsTrigger value="all">All ({tickets.length})</TabsTrigger>
+          <TabsTrigger value="all">All ({filteredTickets.length})</TabsTrigger>
           <TabsTrigger value="pending">Pending ({pendingTickets.length})</TabsTrigger>
           <TabsTrigger value="taken">In Progress ({takenTickets.length})</TabsTrigger>
           <TabsTrigger value="resolved">Resolved ({resolvedTickets.length})</TabsTrigger>
         </TabsList>
         
         <TabsContent value="all" className="mt-4">
-          <TicketList tickets={tickets} isLoading={isLoading} onRate={setRatingTicket} />
+          <TicketList tickets={filteredTickets} isLoading={isLoading} onRate={setRatingTicket} />
         </TabsContent>
         <TabsContent value="pending" className="mt-4">
           <TicketList tickets={pendingTickets} isLoading={isLoading} />

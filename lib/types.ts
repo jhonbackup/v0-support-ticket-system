@@ -2,7 +2,7 @@ export type Role = 'agent' | 'floorwalker' | 'teamleader' | 'admin'
 
 export type TicketStatus = 'pending' | 'taken' | 'resolved'
 
-export type Priority = 'low' | 'medium' | 'high'
+export type TicketType = 'technical' | 'doubts' | 'supervisor'
 
 export interface User {
   id: string
@@ -14,11 +14,15 @@ export interface User {
 
 export interface Ticket {
   id: string
+  ticket_number: number
   created_by: string
   assigned_to: string | null
   status: TicketStatus
-  priority: Priority
-  issue: string
+  type: TicketType
+  external_ticket_id: string
+  reason: string
+  description: string | null
+  issue?: string
   created_at: string
   taken_at: string | null
   resolved_at: string | null

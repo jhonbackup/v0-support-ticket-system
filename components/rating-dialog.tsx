@@ -77,7 +77,7 @@ export function RatingDialog({ ticket, open, onOpenChange, onSuccess }: RatingDi
         <DialogHeader>
           <DialogTitle>Rate Your Experience</DialogTitle>
           <DialogDescription>
-            How was the support you received for: &quot;{ticket.issue.slice(0, 50)}...&quot;
+            How was the support you received for: &quot;{(ticket.reason || ticket.issue || "").slice(0, 50)}...&quot;
           </DialogDescription>
         </DialogHeader>
         
