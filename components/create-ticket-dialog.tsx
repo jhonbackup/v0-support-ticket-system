@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { createClient } from "@/lib/supabase/client"
-import type { TicketType } from "@/lib/types"
+import type { TicketTypeRecord, TicketReasonRecord } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -25,45 +25,42 @@ interface CreateTicketDialogProps {
   onSuccess: () => void
 }
 
-const supportReasons = {
-  technical: [
-    'Problema con sistema',
-    'Error en aplicación',
-    'Fallo de conexión',
-    'Problema con herramientas',
-    'Otro técnico'
-  ],
-  doubts: [
-    'Consulta sobre proceso',
-    'Duda sobre política',
-    'Información de producto',
-    'Aclaración de procedimiento',
-    'Otra duda'
-  ],
-  supervisor: [
-    'Escalamiento de caso',
-    'Autorización necesaria',
-    'Cliente solicita supervisor',
-    'Situación compleja',
-    'Otro motivo'
-  ]
-};
-
-const typeLabels: Record<TicketType, string> = {
-  technical: "Technical",
-  doubts: "Doubts",
-  supervisor: "Supervisor",
-}
-
 export function CreateTicketDialog({ open, onOpenChange, onSuccess }: CreateTicketDialogProps) {
   const { user } = useAuth()
-  const [type, setType] = useState<TicketType | "">("")
+  const [type, setType] = useState("")
   const [reason, setReason] = useState("")
   const [description, setDescription] = useState("")
   const [externalTicketId, setExternalTicketId] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  // Dynamic data from DB
+  const [ticketTypes, setTicketTypes] = useState<TicketTypeRecord[]>([])
+  const [ticketReasons, setTicketReasons] = useState<TicketReasonRecord[]>([])
+  const [dataLoading, setDataLoading] = useState(false)
+
+  // Fetch active types and reasons when dialog opens
+  useEffect(() => {
+    if (open) {
+      setDataLoading(true)
+      const supabase = createClient()
+      Promise.all([
+        supabase.from("ticket_types").select("*").eq("active", true).order("created_at"),
+        supabase.from("ticket_reasons").select("*").eq("active", true).order("created_at"),
+      ]).then(([{ data: t }, { data: r }]) => {
+        setTicketTypes((t as TicketTypeRecord[]) || [])
+        setTicketReasons((r as TicketReasonRecord[]) || [])
+        setDataLoading(false)
+      })
+    }
+  }, [open])
+
   const isValidZendesk = externalTicketId.trim().length >= 5
+
+  // Get the selected type record to find its ID for filtering reasons
+  const selectedTypeRecord = ticketTypes.find((t) => t.name === type)
+  const filteredReasons = selectedTypeRecord
+    ? ticketReasons.filter((r) => r.ticket_type_id === selectedTypeRecord.id)
+    : []
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,7 +94,6 @@ export function CreateTicketDialog({ open, onOpenChange, onSuccess }: CreateTick
     onSuccess()
   }
 
-  // Handle dialog open state explicitly to clear form
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       setType("")
@@ -117,24 +113,32 @@ export function CreateTicketDialog({ open, onOpenChange, onSuccess }: CreateTick
             Select the type of issue and provide details for a floorwalker to assist you.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="type">Type</FieldLabel>
-              <Select value={type} onValueChange={(val) => {
-                setType(val as TicketType)
-                setReason("") // Reset reason when type changes
-              }}>
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="Select a type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="technical">{typeLabels.technical}</SelectItem>
-                  <SelectItem value="doubts">{typeLabels.doubts}</SelectItem>
-                  <SelectItem value="supervisor">{typeLabels.supervisor}</SelectItem>
-                </SelectContent>
-              </Select>
+              {dataLoading ? (
+                <div className="flex items-center gap-2 h-9 px-3 text-sm text-muted-foreground">
+                  <Spinner className="h-4 w-4" /> Loading types...
+                </div>
+              ) : (
+                <Select value={type} onValueChange={(val) => {
+                  setType(val)
+                  setReason("") // Reset reason when type changes
+                }}>
+                  <SelectTrigger id="type">
+                    <SelectValue placeholder="Select a type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ticketTypes.map((t) => (
+                      <SelectItem key={t.id} value={t.name}>
+                        {t.name.charAt(0).toUpperCase() + t.name.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </Field>
 
             <Field>
@@ -144,9 +148,9 @@ export function CreateTicketDialog({ open, onOpenChange, onSuccess }: CreateTick
                   <SelectValue placeholder={type ? "Select a reason..." : "Select type first..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {type && supportReasons[type as TicketType].map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
+                  {filteredReasons.map((r) => (
+                    <SelectItem key={r.id} value={r.name}>
+                      {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -178,7 +182,7 @@ export function CreateTicketDialog({ open, onOpenChange, onSuccess }: CreateTick
               />
             </Field>
           </FieldGroup>
-          
+
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel

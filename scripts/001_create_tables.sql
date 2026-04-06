@@ -4,8 +4,25 @@ CREATE TABLE IF NOT EXISTS public.users (
   employee_code TEXT UNIQUE NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('agent', 'floorwalker', 'teamleader', 'admin')),
   name TEXT NOT NULL,
+  group_id UUID, -- References groups(id), added in alter below
+  is_mentor BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Create groups table
+CREATE TABLE IF NOT EXISTS public.groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  team_leader_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add group constraint to users
+ALTER TABLE public.users
+ADD CONSTRAINT fk_group
+FOREIGN KEY (group_id)
+REFERENCES public.groups(id)
+ON DELETE SET NULL;
 
 -- Create tickets table
 CREATE TABLE IF NOT EXISTS public.tickets (
@@ -41,8 +58,15 @@ CREATE INDEX IF NOT EXISTS idx_ratings_ticket_id ON public.ratings(ticket_id);
 
 -- Enable Row Level Security
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ratings ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for groups
+CREATE POLICY "Allow read access to all groups" ON public.groups FOR SELECT USING (true);
+CREATE POLICY "Allow insert groups for admin" ON public.groups FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update groups for admin" ON public.groups FOR UPDATE USING (true);
+CREATE POLICY "Allow delete groups for admin" ON public.groups FOR DELETE USING (true);
 
 -- RLS Policies for users table (allow read for all, write for admins)
 CREATE POLICY "Allow read access to all users" ON public.users FOR SELECT USING (true);

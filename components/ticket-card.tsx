@@ -14,7 +14,7 @@ const statusConfig = {
   resolved: { label: "Resolved", className: "bg-green-500/10 text-green-700 border-green-200" },
 }
 
-const typeConfig = {
+const typeConfig: Record<string, { label: string; className: string }> = {
   technical: { label: "Technical", className: "bg-purple-500/10 text-purple-700 border-purple-200" },
   doubts: { label: "Doubts", className: "bg-cyan-500/10 text-cyan-700 border-cyan-200" },
   supervisor: { label: "Supervisor", className: "bg-orange-500/10 text-orange-700 border-orange-200" },
@@ -46,7 +46,7 @@ export function TicketCard({
   isActionLoading = false,
 }: TicketCardProps) {
   const status = statusConfig[ticket.status]
-  const ticketType = typeConfig[ticket.type] || { label: "Unknown", className: "bg-slate-500/10 text-slate-700 border-slate-200" }
+  const ticketType = typeConfig[ticket.type] || { label: ticket.type, className: "bg-slate-500/10 text-slate-700 border-slate-200" }
   
   const responseTime = calculateTimeDiffSeconds(ticket.created_at, ticket.taken_at)
   const resolutionTime = calculateTimeDiffSeconds(ticket.created_at, ticket.resolved_at)
@@ -106,12 +106,22 @@ export function TicketCard({
             <div className="flex items-center gap-1">
               <User className="h-4 w-4" />
               {ticket.creator.name} ({ticket.creator.employee_code})
+              {ticket.creator.is_mentor && (
+                <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1 py-0 bg-blue-100 text-blue-800 border-blue-200">
+                  Mentor
+                </Badge>
+              )}
             </div>
           )}
           {ticket.assignee && (
             <div className="flex items-center gap-1">
               <User className="h-4 w-4" />
               Assigned to: {ticket.assignee.name}
+              {ticket.assignee.is_mentor && (
+                <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1 py-0 bg-blue-100 text-blue-800 border-blue-200">
+                  Mentor
+                </Badge>
+              )}
             </div>
           )}
           {ticket.taken_at && (

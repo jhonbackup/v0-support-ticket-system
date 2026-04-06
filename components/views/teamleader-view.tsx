@@ -1,79 +1,53 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { createClient } from "@/lib/supabase/client"
 import type { TicketWithDetails, User } from "@/lib/types"
 import { useRealtimeTickets } from "@/hooks/use-realtime-tickets"
+import { useTeamMembers } from "@/hooks/use-team-members"
 import { useMentorActivation } from "@/hooks/use-mentor-activation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { TicketCard } from "@/components/ticket-card"
 import { Empty } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { OnlineSupportsPanel } from "@/components/online-supports-panel"
-import { Clock, Ticket, CheckCircle, AlertTriangle, Search, Shield, Users, Zap, ZapOff } from "lucide-react"
+import { Clock, Ticket, CheckCircle, AlertTriangle, Search, Users, Shield, Zap, ZapOff } from "lucide-react"
 import { toast } from "sonner"
 
-export function FloorwalkerView() {
+export function TeamLeaderView() {
   const { user } = useAuth()
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [mentors, setMentors] = useState<User[]>([])
-  const [mentorsLoading, setMentorsLoading] = useState(true)
 
-  // Mentor activation hook
+  const { tickets, isLoading } = useRealtimeTickets({
+    channelName: "teamleader-tickets-queue",
+  })
+
+  // Team members logic
+  const { members, group, isLoading: membersLoading, toggleMentorStatus } = useTeamMembers()
+
+  // Mentor activation logic
   const { activateMentor, deactivateMentor } = useMentorActivation(user)
   const [mentorActionLoading, setMentorActionLoading] = useState<string | null>(null)
 
-  const fetchMentors = useCallback(() => {
-    const supabase = createClient()
-    supabase
-      .from("users")
-      .select("*")
-      .eq("is_mentor", true)
-      .then(({ data, error }) => {
-        if (!error && data) setMentors(data as User[])
-        setMentorsLoading(false)
-      })
-  }, [])
-
-  // Fetch all mentors
-  useEffect(() => {
-    fetchMentors()
-  }, [fetchMentors])
-
-  // Realtime refresh for mentor mode changes
-  useEffect(() => {
-    const supabase = createClient()
-    const ch = supabase
-      .channel("fw-mentor-mode")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "users" }, () => fetchMentors())
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [fetchMentors])
-
-  const handleToggleMentorSupport = async (mentor: User) => {
-    setMentorActionLoading(mentor.id)
-    const isActive = mentor.current_mode === "supporting"
+  const handleToggleMentorSupport = async (member: User) => {
+    setMentorActionLoading(member.id)
+    const isActive = member.current_mode === "supporting"
     const success = isActive
-      ? await deactivateMentor(mentor.id)
-      : await activateMentor(mentor.id, mentor.group_id ?? null)
+      ? await deactivateMentor(member.id)
+      : await activateMentor(member.id, member.group_id ?? null)
     setMentorActionLoading(null)
     if (success) {
       toast.success(isActive ? "Mentor deactivated" : "Mentor activated for support")
-      fetchMentors()
     } else {
       toast.error("Failed to update mentor status")
     }
   }
-
-  const { tickets, isLoading } = useRealtimeTickets({
-    channelName: "floorwalker-tickets-queue",
-  })
 
   const handleTakeTicket = async (ticketId: string) => {
     if (!user) return
@@ -140,19 +114,21 @@ export function FloorwalkerView() {
   const resolvedTickets = filteredTickets.filter((t) => t.status === "resolved")
   const supervisorRequests = pendingTickets.filter((t) => t.type === "supervisor")
 
+  const handleToggleMentor = async (memberId: string, currentStatus: boolean) => {
+    const success = await toggleMentorStatus(memberId, currentStatus)
+    if (!success && !currentStatus) {
+      toast.error("You can only flag up to 2 active mentors per group.")
+    } else if (success) {
+      toast.success(currentStatus ? "Removed mentor tag" : "Added mentor tag")
+    }
+  }
+
   return (
     <Tabs defaultValue="queue" className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <TabsList>
           <TabsTrigger value="queue">Support Queue</TabsTrigger>
-          <TabsTrigger value="mentors">
-            Mentors
-            {mentors.length > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-blue-100 w-5 h-5 text-xs font-semibold text-blue-800">
-                {mentors.length}
-              </span>
-            )}
-          </TabsTrigger>
+          <TabsTrigger value="team">Team Management</TabsTrigger>
         </TabsList>
       </div>
 
@@ -203,7 +179,7 @@ export function FloorwalkerView() {
             <CardHeader className="pb-2">
               <CardDescription>Resolved Today</CardDescription>
               <CardTitle className="text-3xl">
-                {resolvedTickets.filter((t) =>
+                {resolvedTickets.filter((t) => 
                   new Date(t.resolved_at!).toDateString() === new Date().toDateString()
                 ).length}
               </CardTitle>
@@ -240,7 +216,7 @@ export function FloorwalkerView() {
             <TabsTrigger value="all-active">All Active ({allTakenTickets.length})</TabsTrigger>
             <TabsTrigger value="resolved">Resolved ({resolvedTickets.length})</TabsTrigger>
           </TabsList>
-
+          
           <TabsContent value="pending" className="mt-4">
             <TicketList
               tickets={pendingTickets}
@@ -267,8 +243,8 @@ export function FloorwalkerView() {
             />
           </TabsContent>
           <TabsContent value="resolved" className="mt-4">
-            <TicketList
-              tickets={resolvedTickets}
+            <TicketList 
+              tickets={resolvedTickets} 
               isLoading={isLoading}
               actionLoading={actionLoading}
             />
@@ -276,81 +252,81 @@ export function FloorwalkerView() {
         </Tabs>
       </TabsContent>
 
-      <TabsContent value="mentors" className="mt-0 space-y-6">
+      <TabsContent value="team" className="mt-0 space-y-6">
         <div>
-          <h2 className="text-2xl font-bold">Mentors Directory</h2>
-          <p className="text-muted-foreground">Manage mentor support activation</p>
+          <h2 className="text-2xl font-bold">Team Management</h2>
+          <p className="text-muted-foreground">Manage your group members, mentor roles, and support activation</p>
         </div>
 
         <OnlineSupportsPanel />
 
-        {mentorsLoading ? (
-          <div className="grid gap-4">
-            {[1, 2].map((i) => (
+        {membersLoading ? (
+          <div className="grid gap-4 mt-4">
+            {[1, 2, 3].map((i) => (
               <Card key={i} className="animate-pulse flex h-20 bg-muted/50" />
             ))}
           </div>
-        ) : mentors.length === 0 ? (
-          <Empty
-            title="No mentors assigned"
-            description="Team Leaders haven't assigned any mentors yet."
+        ) : members.length === 0 ? (
+          <Empty 
+            title="No team members found" 
+            description={group ? `No assignees linked to group ${group.name}` : "You don't have a team assigned yet."} 
           />
         ) : (
-          <div className="bg-card rounded-md border shadow-sm">
-            <table className="w-full text-sm text-left">
+          <div className="bg-card rounded-md border shadow-sm mt-4">
+            <table className="w-full text-sm text-left relative">
               <thead className="text-xs uppercase bg-muted/50 text-muted-foreground border-b">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Employee Code</th>
-                  <th className="px-6 py-4 font-medium">Name</th>
-                  <th className="px-6 py-4 font-medium text-center">Status</th>
-                  <th className="px-6 py-4 font-medium text-center">Action</th>
+                  <th className="px-4 py-4 font-medium">Employee Code</th>
+                  <th className="px-4 py-4 font-medium">Name</th>
+                  <th className="px-4 py-4 font-medium text-center">Mentor</th>
+                  <th className="px-4 py-4 font-medium text-center">Support Mode</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {mentors.map((mentor) => {
-                  const isSupporting = mentor.current_mode === "supporting"
-                  return (
-                    <tr key={mentor.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 font-mono">{mentor.employee_code}</td>
-                      <td className="px-6 py-4 font-medium">
-                        <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          {mentor.name}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {isSupporting ? (
-                          <Badge className="bg-green-100 text-green-800 border-green-200 hover:bg-green-100">
-                            <Zap className="h-3 w-3 mr-1" />
-                            Activo en soporte
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100">
-                            <Shield className="h-3 w-3 mr-1" />
-                            Disponible
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
+                {members.map((member) => (
+                  <tr key={member.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-4 font-mono">{member.employee_code}</td>
+                    <td className="px-4 py-4 font-medium flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      {member.name}
+                      {member.is_mentor && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          Mentor
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <Shield className={`h-4 w-4 ${member.is_mentor ? "text-blue-500" : "text-muted-foreground opacity-50"}`} />
+                        <Switch 
+                          checked={member.is_mentor || false} 
+                          onCheckedChange={() => handleToggleMentor(member.id, !!member.is_mentor)}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {member.is_mentor ? (
                         <Button
                           size="sm"
-                          variant={isSupporting ? "destructive" : "default"}
+                          variant={member.current_mode === "supporting" ? "destructive" : "default"}
                           className="text-xs"
-                          disabled={mentorActionLoading === mentor.id}
-                          onClick={() => handleToggleMentorSupport(mentor)}
+                          disabled={mentorActionLoading === member.id}
+                          onClick={() => handleToggleMentorSupport(member)}
                         >
-                          {mentorActionLoading === mentor.id ? (
+                          {mentorActionLoading === member.id ? (
                             <Spinner className="h-3.5 w-3.5" />
-                          ) : isSupporting ? (
+                          ) : member.current_mode === "supporting" ? (
                             <><ZapOff className="h-3.5 w-3.5 mr-1" /> Desactivar</>
                           ) : (
-                            <><Zap className="h-3.5 w-3.5 mr-1" /> Activar soporte</>
+                            <><Zap className="h-3.5 w-3.5 mr-1" /> Activar</>
                           )}
                         </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

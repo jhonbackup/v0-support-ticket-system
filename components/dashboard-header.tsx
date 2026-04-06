@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Headset, LogOut } from "lucide-react"
 
-const roleLabels = {
+const roleLabels: Record<string, string> = {
   agent: "Agent",
   floorwalker: "Floorwalker",
   teamleader: "Team Leader",
   admin: "Admin",
 }
 
-const roleColors = {
+const roleColors: Record<string, string> = {
   agent: "bg-blue-500/10 text-blue-700 border-blue-200",
   floorwalker: "bg-green-500/10 text-green-700 border-green-200",
   teamleader: "bg-amber-500/10 text-amber-700 border-amber-200",
@@ -46,8 +46,8 @@ export function DashboardHeader() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{user.name}</span>
-            <Badge variant="outline" className={roleColors[user.role]}>
-              {roleLabels[user.role]}
+            <Badge variant="outline" className={roleColors[user.role] || "bg-slate-500/10 text-slate-700 border-slate-200"}>
+              {roleLabels[user.role] || user.role}
             </Badge>
             <span className="text-xs text-muted-foreground font-mono">
               {user.employee_code}

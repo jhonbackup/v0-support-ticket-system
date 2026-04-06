@@ -16,6 +16,8 @@ import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { Empty } from "@/components/ui/empty"
 import { TicketCard } from "@/components/ticket-card"
+import { GroupsTab } from "@/components/admin-groups-tab"
+import { AdminConfigTab } from "@/components/admin-config-tab"
 import { 
   Users, 
   Ticket, 
@@ -31,14 +33,14 @@ import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
 import { calculateTimeDiffSeconds, formatDuration } from "@/lib/utils"
 
-const roleLabels: Record<Role, string> = {
+const roleLabels: Record<string, string> = {
   agent: "Agent",
   floorwalker: "Floorwalker",
   teamleader: "Team Leader",
   admin: "Admin",
 }
 
-const roleColors: Record<Role, string> = {
+const roleColors: Record<string, string> = {
   agent: "bg-blue-500/10 text-blue-700 border-blue-200",
   floorwalker: "bg-green-500/10 text-green-700 border-green-200",
   teamleader: "bg-amber-500/10 text-amber-700 border-amber-200",
@@ -216,6 +218,8 @@ export function AdminView() {
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="performance">Staff Performance</TabsTrigger>
           <TabsTrigger value="tickets">All Tickets</TabsTrigger>
+          <TabsTrigger value="groups">Groups</TabsTrigger>
+          <TabsTrigger value="config">Configuration</TabsTrigger>
         </TabsList>
         
         <TabsContent value="users" className="mt-4">
@@ -381,6 +385,14 @@ export function AdminView() {
               ))
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="groups" className="mt-4">
+          <GroupsTab />
+        </TabsContent>
+
+        <TabsContent value="config" className="mt-4">
+          <AdminConfigTab />
         </TabsContent>
       </Tabs>
 

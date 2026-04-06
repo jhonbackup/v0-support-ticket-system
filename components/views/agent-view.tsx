@@ -12,6 +12,8 @@ import { RatingDialog } from "@/components/rating-dialog"
 import { TicketCard } from "@/components/ticket-card"
 import { Empty } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
+import { MentorSupportMode } from "@/components/mentor-support-mode"
+import { OnlineSupportsPanel } from "@/components/online-supports-panel"
 import { Plus, Ticket, Clock, CheckCircle, Search } from "lucide-react"
 
 export function AgentView() {
@@ -45,124 +47,141 @@ export function AgentView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">My Tickets</h2>
-          <p className="text-muted-foreground">Create and track your support requests</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative w-64 hidden sm:block">
+      {/* Mentor Support Mode — shown when mentor is in active support */}
+      {user?.is_mentor && user?.current_mode === "supporting" && (
+        <MentorSupportMode />
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+        {/* Main content */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">My Tickets</h2>
+              <p className="text-muted-foreground">Create and track your support requests</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative w-64 hidden sm:block">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search by ID or Zendesk..."
+                  className="pl-9"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Ticket
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative w-full sm:hidden">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search by ID or Zendesk..."
-              className="pl-9"
+              className="pl-9 w-full"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Ticket
-          </Button>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Pending</CardDescription>
+                <CardTitle className="text-3xl">{pendingTickets.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  Waiting for support
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>In Progress</CardDescription>
+                <CardTitle className="text-3xl">{takenTickets.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Ticket className="h-4 w-4" />
+                  Being handled
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Resolved</CardDescription>
+                <CardTitle className="text-3xl">{resolvedTickets.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CheckCircle className="h-4 w-4" />
+                  Completed
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {unreatedResolvedTickets.length > 0 && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg text-amber-800">Rate Your Experience</CardTitle>
+                <CardDescription className="text-amber-700">
+                  You have {unreatedResolvedTickets.length} resolved ticket(s) waiting for your feedback
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex gap-2 flex-wrap">
+                {unreatedResolvedTickets.map((ticket) => (
+                  <Button
+                    key={ticket.id}
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-300 hover:bg-amber-100"
+                    onClick={() => setRatingTicket(ticket)}
+                  >
+                    Rate: {(ticket.reason || ticket.issue || "").slice(0, 30)}...
+                  </Button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <Tabs defaultValue="all">
+            <TabsList>
+              <TabsTrigger value="all">All ({filteredTickets.length})</TabsTrigger>
+              <TabsTrigger value="pending">Pending ({pendingTickets.length})</TabsTrigger>
+              <TabsTrigger value="taken">In Progress ({takenTickets.length})</TabsTrigger>
+              <TabsTrigger value="resolved">Resolved ({resolvedTickets.length})</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="all" className="mt-4">
+              <TicketList tickets={filteredTickets} isLoading={isLoading} onRate={setRatingTicket} />
+            </TabsContent>
+            <TabsContent value="pending" className="mt-4">
+              <TicketList tickets={pendingTickets} isLoading={isLoading} />
+            </TabsContent>
+            <TabsContent value="taken" className="mt-4">
+              <TicketList tickets={takenTickets} isLoading={isLoading} />
+            </TabsContent>
+            <TabsContent value="resolved" className="mt-4">
+              <TicketList tickets={resolvedTickets} isLoading={isLoading} onRate={setRatingTicket} />
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Online Supports Sidebar */}
+        <div className="hidden lg:block">
+          <div className="sticky top-4">
+            <OnlineSupportsPanel />
+          </div>
         </div>
       </div>
-      
-      <div className="relative w-full sm:hidden">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search by ID or Zendesk..."
-          className="pl-9 w-full"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Pending</CardDescription>
-            <CardTitle className="text-3xl">{pendingTickets.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              Waiting for support
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>In Progress</CardDescription>
-            <CardTitle className="text-3xl">{takenTickets.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Ticket className="h-4 w-4" />
-              Being handled
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Resolved</CardDescription>
-            <CardTitle className="text-3xl">{resolvedTickets.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="h-4 w-4" />
-              Completed
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {unreatedResolvedTickets.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-amber-800">Rate Your Experience</CardTitle>
-            <CardDescription className="text-amber-700">
-              You have {unreatedResolvedTickets.length} resolved ticket(s) waiting for your feedback
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex gap-2 flex-wrap">
-            {unreatedResolvedTickets.map((ticket) => (
-              <Button
-                key={ticket.id}
-                variant="outline"
-                size="sm"
-                className="border-amber-300 hover:bg-amber-100"
-                onClick={() => setRatingTicket(ticket)}
-              >
-                Rate: {(ticket.reason || ticket.issue || "").slice(0, 30)}...
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">All ({filteredTickets.length})</TabsTrigger>
-          <TabsTrigger value="pending">Pending ({pendingTickets.length})</TabsTrigger>
-          <TabsTrigger value="taken">In Progress ({takenTickets.length})</TabsTrigger>
-          <TabsTrigger value="resolved">Resolved ({resolvedTickets.length})</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="all" className="mt-4">
-          <TicketList tickets={filteredTickets} isLoading={isLoading} onRate={setRatingTicket} />
-        </TabsContent>
-        <TabsContent value="pending" className="mt-4">
-          <TicketList tickets={pendingTickets} isLoading={isLoading} />
-        </TabsContent>
-        <TabsContent value="taken" className="mt-4">
-          <TicketList tickets={takenTickets} isLoading={isLoading} />
-        </TabsContent>
-        <TabsContent value="resolved" className="mt-4">
-          <TicketList tickets={resolvedTickets} isLoading={isLoading} onRate={setRatingTicket} />
-        </TabsContent>
-      </Tabs>
 
       <CreateTicketDialog
         open={createDialogOpen}
