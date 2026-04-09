@@ -53,6 +53,7 @@ export interface User {
   group_id?: string | null
   is_mentor?: boolean
   current_mode?: UserMode
+  status?: string
   created_at: string
 }
 

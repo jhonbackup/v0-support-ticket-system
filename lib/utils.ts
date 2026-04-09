@@ -19,17 +19,17 @@ export function calculateTimeDiffSeconds(start: string | null | undefined, end: 
 export function formatDuration(seconds: number | null): string {
   if (seconds === null || seconds < 0 || isNaN(seconds)) return "N/A"
   
-  if (seconds < 60) return `${Math.floor(seconds)}s`
+  if (seconds < 60) return `${Math.floor(seconds)} sec`
   
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
   
   if (h > 0) {
-    if (m === 0) return `${h}h`
-    return `${h}h ${m}m`
+    if (m === 0) return `${h} hr`
+    return `${h} hr ${m} min`
   }
   
-  if (s === 0) return `${m}m`
-  return `${m}m ${s}s`
+  if (s === 0) return `${m} min`
+  return `${m} min ${s} sec`
 }

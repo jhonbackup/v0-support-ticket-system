@@ -91,8 +91,9 @@ export function useMentorActivation(currentUser: User | null): UseMentorActivati
   useEffect(() => {
     refreshAll()
 
-    const channel = supabase
-      .channel("mentor-activation-realtime")
+    const channel = supabase.channel(`mentor-act-${Math.random().toString(36).substring(7)}`)
+
+    channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "mentor_activations" },
@@ -135,16 +136,18 @@ export function useMentorActivation(currentUser: User | null): UseMentorActivati
       return false
     }
 
-    // Update user mode
+    // Update user mode and set status to online
     const { error: updateError } = await supabase
       .from("users")
-      .update({ current_mode: "supporting" })
+      .update({ current_mode: "supporting", status: "online" })
       .eq("id", mentorId)
 
     if (updateError) {
       console.error("Failed to update user mode:", updateError)
       return false
     }
+
+    console.log("User activation:", { status: "online", current_mode: "supporting" })
 
     await refreshAll()
     return true
@@ -163,16 +166,17 @@ export function useMentorActivation(currentUser: User | null): UseMentorActivati
       return false
     }
 
-    // Reset user mode
     const { error: updateUserError } = await supabase
       .from("users")
-      .update({ current_mode: "taking_calls" })
+      .update({ current_mode: "taking_calls", status: "offline" })
       .eq("id", mentorId)
 
     if (updateUserError) {
       console.error("Failed to reset user mode:", updateUserError)
       return false
     }
+
+    console.log("User deactivation:", { current_mode: "taking_calls" })
 
     await refreshAll()
     return true

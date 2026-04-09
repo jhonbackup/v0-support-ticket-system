@@ -30,10 +30,18 @@ export function useTeamMembers(): UseTeamMembersReturn {
       .from("groups")
       .select("*")
       .eq("team_leader_id", user.id)
-      .single()
+      .maybeSingle()
 
-    if (groupError || !groupData) {
+    if (groupError) {
       console.error("Error fetching group:", groupError)
+      setIsLoading(false)
+      return
+    }
+
+    if (!groupData) {
+      console.log("TL group: null (No group assigned)")
+      setGroup(null)
+      setMembers([]) // No group means no members
       setIsLoading(false)
       return
     }
@@ -62,12 +70,14 @@ export function useTeamMembers(): UseTeamMembersReturn {
   // Realtime: refresh when any user in this group changes
   useEffect(() => {
     if (!group) return
-    const channel = supabase
-      .channel(`team-members-${group.id}`)
+    const channel = supabase.channel(`team-members-${group.id}-${Math.random().toString(36).substring(7)}`)
+
+    channel
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "users" }, () => {
         fetchTeamData()
       })
       .subscribe()
+
     return () => { supabase.removeChannel(channel) }
   }, [group, supabase, fetchTeamData])
 

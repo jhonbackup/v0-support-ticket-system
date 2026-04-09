@@ -17,6 +17,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { OnlineSupportsPanel } from "@/components/online-supports-panel"
 import { Clock, Ticket, CheckCircle, AlertTriangle, Search, Shield, Users, Zap, ZapOff } from "lucide-react"
 import { toast } from "sonner"
+import { fetchMentors as fetchMentorsFromDb } from "@/lib/mentors"
 
 export function FloorwalkerView() {
   const { user } = useAuth()
@@ -29,16 +30,10 @@ export function FloorwalkerView() {
   const { activateMentor, deactivateMentor } = useMentorActivation(user)
   const [mentorActionLoading, setMentorActionLoading] = useState<string | null>(null)
 
-  const fetchMentors = useCallback(() => {
-    const supabase = createClient()
-    supabase
-      .from("users")
-      .select("*")
-      .eq("is_mentor", true)
-      .then(({ data, error }) => {
-        if (!error && data) setMentors(data as User[])
-        setMentorsLoading(false)
-      })
+  const fetchMentors = useCallback(async () => {
+    const data = await fetchMentorsFromDb()
+    setMentors(data)
+    setMentorsLoading(false)
   }, [])
 
   // Fetch all mentors
@@ -49,12 +44,28 @@ export function FloorwalkerView() {
   // Realtime refresh for mentor mode changes
   useEffect(() => {
     const supabase = createClient()
-    const ch = supabase
-      .channel("fw-mentor-mode")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "users" }, () => fetchMentors())
+    const ch = supabase.channel(`fw-mentor-mode-${Math.random().toString(36).substring(7)}`)
+
+    ch.on("postgres_changes", { event: "UPDATE", schema: "public", table: "users" }, () => fetchMentors())
       .subscribe()
+
     return () => { supabase.removeChannel(ch) }
   }, [fetchMentors])
+
+  const handleToggleSelfSupport = async () => {
+    if (!user) return
+    const isActive = user.current_mode === "supporting"
+    setMentorActionLoading(user.id)
+    const success = isActive
+      ? await deactivateMentor(user.id)
+      : await activateMentor(user.id, user.group_id ?? null)
+    setMentorActionLoading(null)
+    if (success) {
+      toast.success(isActive ? "Support mode deactivated" : "Support mode activated")
+    } else {
+      toast.error("Failed to change support mode")
+    }
+  }
 
   const handleToggleMentorSupport = async (mentor: User) => {
     setMentorActionLoading(mentor.id)
@@ -123,14 +134,14 @@ export function FloorwalkerView() {
 
   const filteredTickets = tickets.filter(t => {
     if (!searchQuery.trim()) return true
-    
+
     const query = searchQuery.trim().toLowerCase()
-    
+
     const formattedId = `TCK-${t.ticket_number?.toString().padStart(6, '0')}`.toLowerCase()
     const internalMatch = formattedId.includes(query) || t.ticket_number?.toString().includes(query)
-    
+
     const externalMatch = t.external_ticket_id?.toLowerCase().includes(query)
-    
+
     return internalMatch || externalMatch
   })
 
@@ -142,7 +153,7 @@ export function FloorwalkerView() {
 
   return (
     <Tabs defaultValue="queue" className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <TabsList>
           <TabsTrigger value="queue">Support Queue</TabsTrigger>
           <TabsTrigger value="mentors">
@@ -154,6 +165,33 @@ export function FloorwalkerView() {
             )}
           </TabsTrigger>
         </TabsList>
+        <div className="flex items-center gap-3 bg-muted/50 p-2 rounded-lg border">
+          <span className="text-sm font-medium text-muted-foreground ml-2">My Status:</span>
+          {user?.current_mode === "supporting" ? (
+            <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800 border border-green-200">
+              <Zap className="h-3 w-3 mr-1" /> Activo en soporte
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-800 border border-slate-200">
+              <ZapOff className="h-3 w-3 mr-1" /> Disponible
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant={user?.current_mode === "supporting" ? "destructive" : "default"}
+            disabled={mentorActionLoading === user?.id}
+            onClick={handleToggleSelfSupport}
+            className="h-8 text-xs ml-1"
+          >
+            {mentorActionLoading === user?.id ? (
+              <Spinner className="h-3 w-3" />
+            ) : user?.current_mode === "supporting" ? (
+              "Desactivar soporte"
+            ) : (
+              "Activar soporte"
+            )}
+          </Button>
+        </div>
       </div>
 
       <TabsContent value="queue" className="space-y-6 mt-0">

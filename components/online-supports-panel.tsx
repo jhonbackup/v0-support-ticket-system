@@ -23,11 +23,12 @@ export function OnlineSupportsPanel() {
   const supabase = supabaseRef.current
 
   const fetchSupports = useCallback(async () => {
-    // Get all users in supporting mode
+    // Get all users in supporting mode and online
     const { data: supporters } = await supabase
       .from("users")
       .select("*")
       .eq("current_mode", "supporting")
+      .eq("status", "online")
 
     if (!supporters || supporters.length === 0) {
       setSupports([])
@@ -69,8 +70,9 @@ export function OnlineSupportsPanel() {
   useEffect(() => {
     fetchSupports()
 
-    const channel = supabase
-      .channel("online-supports-panel")
+    const channel = supabase.channel(`online-supports-${Math.random().toString(36).substring(7)}`)
+
+    channel
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "users" },

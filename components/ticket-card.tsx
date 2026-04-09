@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Star, Clock, User, Calendar, Timer } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
-import { calculateTimeDiffSeconds, formatDuration } from "@/lib/utils"
-
+import { calculateResponseTime, calculateResolutionTime } from "@/lib/metrics"
 const statusConfig = {
   pending: { label: "Pending", className: "bg-yellow-500/10 text-yellow-700 border-yellow-200" },
   taken: { label: "In Progress", className: "bg-blue-500/10 text-blue-700 border-blue-200" },
@@ -48,9 +47,16 @@ export function TicketCard({
   const status = statusConfig[ticket.status]
   const ticketType = typeConfig[ticket.type] || { label: ticket.type, className: "bg-slate-500/10 text-slate-700 border-slate-200" }
   
-  const responseTime = calculateTimeDiffSeconds(ticket.created_at, ticket.taken_at)
-  const resolutionTime = calculateTimeDiffSeconds(ticket.created_at, ticket.resolved_at)
+  const responseTimeDisplay = calculateResponseTime(ticket)
+  const resolutionTimeDisplay = calculateResolutionTime(ticket)
 
+  // DEBUG
+  console.log("Ticket Time Metrics Debug:", {
+    external_id: ticket.external_ticket_id,
+    created_at: ticket.created_at,
+    taken_at: ticket.taken_at,
+    resolved_at: ticket.resolved_at
+  })
   const mainLabel = ticket.reason || "Support Ticket"
   const secondaryText = ticket.description || ticket.issue
   const formattedInternalId = `#TCK-${ticket.ticket_number?.toString().padStart(6, '0') || '000000'}`
@@ -130,18 +136,14 @@ export function TicketCard({
               Taken {formatDistanceToNow(new Date(ticket.taken_at), { addSuffix: true })}
             </div>
           )}
-          {responseTime !== null && (
-            <div className="flex items-center gap-1 text-blue-600">
-              <Timer className="h-4 w-4" />
-              Response: {formatDuration(responseTime)}
-            </div>
-          )}
-          {resolutionTime !== null && (
-            <div className="flex items-center gap-1 text-green-600">
-              <Timer className="h-4 w-4" />
-              Resolution: {formatDuration(resolutionTime)}
-            </div>
-          )}
+          <div className="flex items-center gap-1 text-blue-600">
+            <Timer className="h-4 w-4" />
+            Response: {responseTimeDisplay}
+          </div>
+          <div className="flex items-center gap-1 text-green-600">
+            <Timer className="h-4 w-4" />
+            Resolution: {resolutionTimeDisplay}
+          </div>
         </div>
         
         {ticket.rating?.comment && (

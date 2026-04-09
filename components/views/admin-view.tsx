@@ -31,7 +31,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
-import { calculateTimeDiffSeconds, formatDuration } from "@/lib/utils"
+import { formatDuration } from "@/lib/utils"
+import { calculateResponseTimeSeconds, calculateResolutionTimeSeconds } from "@/lib/metrics"
 
 const roleLabels: Record<string, string> = {
   agent: "Agent",
@@ -117,12 +118,12 @@ export function AdminView() {
 
   const takenWithTime = tickets.filter(t => t.taken_at)
   const avgResponseTimeSeconds = takenWithTime.length > 0 
-    ? takenWithTime.reduce((sum, t) => sum + (calculateTimeDiffSeconds(t.created_at, t.taken_at) || 0), 0) / takenWithTime.length
+    ? takenWithTime.reduce((sum, t) => sum + (calculateResponseTimeSeconds(t) || 0), 0) / takenWithTime.length
     : null
 
-  const resolvedWithTime = resolvedTickets.filter((t) => t.resolved_at)
+  const resolvedWithTime = resolvedTickets.filter((t) => t.taken_at && t.resolved_at)
   const avgResolutionTimeSeconds = resolvedWithTime.length > 0
-    ? resolvedWithTime.reduce((sum, t) => sum + (calculateTimeDiffSeconds(t.created_at, t.resolved_at) || 0), 0) / resolvedWithTime.length
+    ? resolvedWithTime.reduce((sum, t) => sum + (calculateResolutionTimeSeconds(t) || 0), 0) / resolvedWithTime.length
     : null
 
   // Support staff performance
@@ -207,7 +208,7 @@ export function AdminView() {
           <CardContent>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <TrendingUp className="h-4 w-4" />
-              Created to Resolved
+              Taken to Resolved
             </div>
           </CardContent>
         </Card>
@@ -416,18 +417,36 @@ function AddUserDialog({
 }) {
   const [employeeCode, setEmployeeCode] = useState("")
   const [name, setName] = useState("")
-  const [role, setRole] = useState<Role>("agent")
+  const [roleId, setRoleId] = useState<string>("")
+  const [dbRoles, setDbRoles] = useState<{id: string, name: string}[]>([])
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    async function fetchRoles() {
+      const supabase = createClient()
+      const { data } = await supabase.from("roles").select("id, name").order("hierarchy_level", { ascending: false })
+      if (data) {
+        setDbRoles(data)
+        if (data.length > 0) setRoleId(data[0].id)
+      }
+    }
+    if (open) fetchRoles()
+  }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     const supabase = createClient()
+    const selectedRoleName = dbRoles.find(r => r.id === roleId)?.name || "agent"
+    
+    console.log("Creating user with role_id:", roleId)
+
     const { error } = await supabase.from("users").insert({
       employee_code: employeeCode.toUpperCase(),
       name,
-      role,
+      role: selectedRoleName as Role,
+      role_id: roleId,
     })
 
     if (error) {
@@ -443,7 +462,7 @@ function AddUserDialog({
     toast.success("User created successfully")
     setEmployeeCode("")
     setName("")
-    setRole("agent")
+    if (dbRoles.length > 0) setRoleId(dbRoles[0].id)
     setIsLoading(false)
     onOpenChange(false)
     onSuccess()
@@ -484,15 +503,16 @@ function AddUserDialog({
 
             <Field>
               <FieldLabel htmlFor="role">Role</FieldLabel>
-              <Select value={role} onValueChange={(value) => setRole(value as Role)}>
+              <Select value={roleId} onValueChange={(value) => setRoleId(value)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="agent">Agent</SelectItem>
-                  <SelectItem value="floorwalker">Floorwalker</SelectItem>
-                  <SelectItem value="teamleader">Team Leader</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  {dbRoles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {roleLabels[role.name] || role.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
@@ -502,7 +522,7 @@ function AddUserDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !roleId}>
               {isLoading ? <Spinner className="mr-2" /> : null}
               Create User
             </Button>
